@@ -1,5 +1,4 @@
 import KanbanColumn from "./components/kanban/KanbanColumn";
-import KanbanCard from "./components/kanban/KanbanCard";
 
 export default function HomePage() {
   return (
@@ -7,18 +6,14 @@ export default function HomePage() {
       <h1 className="mb-6 text-2xl font-bold">Kanban Board</h1>
 
       <div className="flex gap-6">
-        <KanbanColumn title="Todo">
-          <KanbanCard title="Fix login bug" />
-          <KanbanCard title="Design homepage" />
-        </KanbanColumn>
-
-        <KanbanColumn title="In Progress">
-          <KanbanCard title="Build Kanban UI" />
-        </KanbanColumn>
-
-        <KanbanColumn title="Done">
-          <KanbanCard title="Project setup" />
-        </KanbanColumn>
+        <KanbanColumn title="Stuck" initialCards={["Fix login bug"]} />
+        <KanbanColumn title="Not Started" initialCards={["Design homepage"]} />
+        <KanbanColumn
+          title="Working on it"
+          initialCards={["Build Kanban UI"]}
+        />
+        <KanbanColumn title="Done" initialCards={["Project setup"]} />
+        <KanbanColumn title="Test" initialCards={[]} />
       </div>
     </main>
   );
