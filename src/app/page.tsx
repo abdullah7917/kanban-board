@@ -34,16 +34,8 @@ const initialColumns: Column[] = [
     title: "Working on it",
     cards: [{ id: "c3", title: "Build Kanban UI" }],
   },
-  {
-    id: "done",
-    title: "Done",
-    cards: [{ id: "c4", title: "Project setup" }],
-  },
-  {
-    id: "test",
-    title: "Test",
-    cards: [],
-  },
+  { id: "done", title: "Done", cards: [{ id: "c4", title: "Project setup" }] },
+  { id: "test", title: "Test", cards: [] },
 ];
 
 function reorder<T>(list: T[], startIndex: number, endIndex: number) {
@@ -88,16 +80,30 @@ export default function HomePage() {
     });
   }
 
+  function addCard(columnId: ColumnId) {
+    const title = prompt("Card title?");
+    if (!title) return;
+
+    setColumns((prev) =>
+      prev.map((c) =>
+        c.id === columnId
+          ? { ...c, cards: [...c.cards, { id: crypto.randomUUID(), title }] }
+          : c
+      )
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black p-6 text-white">
       <h1 className="mb-6 text-2xl font-bold">Kanban Board</h1>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex gap-6 overflow-x-auto pb-4">
+        {/* Responsive grid: columns shrink + wrap instead of forcing horizontal scroll */}
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {columns.map((col) => (
             <div
               key={col.id}
-              className="w-72 shrink-0 rounded-lg bg-gray-800 p-4"
+              className="min-w-0 w-full rounded-lg bg-gray-800 p-4"
             >
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-lg font-semibold">
@@ -109,11 +115,18 @@ export default function HomePage() {
               </div>
 
               <Droppable droppableId={col.id}>
-                {(provided) => (
+                {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className="space-y-3"
+                    // ✅ Always has a drop zone (fixes “can’t drag back” esp. empty columns)
+                    className={[
+                      "space-y-3 rounded-md p-2",
+                      "min-h-[80px]", // IMPORTANT
+                      snapshot.isDraggingOver
+                        ? "bg-gray-700/40"
+                        : "bg-gray-900/20",
+                    ].join(" ")}
                   >
                     {col.cards.map((card, index) => (
                       <Draggable
@@ -137,6 +150,13 @@ export default function HomePage() {
                   </div>
                 )}
               </Droppable>
+
+              <button
+                onClick={() => addCard(col.id)}
+                className="mt-3 w-full rounded-md bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600"
+              >
+                + Add card
+              </button>
             </div>
           ))}
         </div>
