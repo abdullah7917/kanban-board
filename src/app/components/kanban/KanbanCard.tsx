@@ -50,7 +50,7 @@ export default function KanbanCard({
       ref={innerRef}
       {...draggableProps}
       {...dragHandleProps}
-      className="group relative rounded-lg bg-white px-3 py-3 text-sm text-slate-900 shadow-md ring-1 ring-black/5"
+      className="group relative rounded-lg bg-white  px-3 py-3 text-sm text-slate-900 shadow-md ring-1 ring-black/5"
     >
       {isEditing ? (
         <input

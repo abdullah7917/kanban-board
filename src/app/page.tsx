@@ -14,22 +14,10 @@ type Column = {
 };
 
 const initialColumns: Column[] = [
-  {
-    id: "stuck",
-    title: "Stuck",
-    cards: [{ id: "c1", title: "Fix login bug" }],
-  },
-  {
-    id: "not_started",
-    title: "Not Started",
-    cards: [{ id: "c2", title: "Design homepage" }],
-  },
-  {
-    id: "working_on_it",
-    title: "Working on it",
-    cards: [{ id: "c3", title: "Build Kanban UI" }],
-  },
-  { id: "done", title: "Done", cards: [{ id: "c4", title: "Project setup" }] },
+  { id: "stuck", title: "Stuck", cards: [] },
+  { id: "not_started", title: "Not Started", cards: [] },
+  { id: "working_on_it", title: "Working On It", cards: [] },
+  { id: "done", title: "Done", cards: [] },
   { id: "test", title: "Test", cards: [] },
 ];
 

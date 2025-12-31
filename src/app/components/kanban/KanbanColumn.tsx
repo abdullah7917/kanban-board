@@ -28,9 +28,9 @@ type KanbanColumnProps = {
 const columnShell: Record<ColumnId, string> = {
   stuck: "bg-pink-600/80",
   not_started: "bg-blue-600/80",
-  working_on_it: "bg-orange-500/80",
+  working_on_it: "bg-yellow-500/100",
   done: "bg-emerald-500/80",
-  test: "bg-purple-600/80",
+  test: "bg-red-600/80",
 };
 
 export default function KanbanColumn({
