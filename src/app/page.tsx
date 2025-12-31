@@ -93,13 +93,23 @@ export default function HomePage() {
     );
   }
 
+  function deleteCard(columnId: ColumnId, cardId: string) {
+    setColumns((prev) =>
+      prev.map((c) =>
+        c.id === columnId
+          ? { ...c, cards: c.cards.filter((card) => card.id !== cardId) }
+          : c
+      )
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black p-6 text-white">
       <h1 className="mb-6 text-2xl font-bold">Kanban Board</h1>
 
       <DragDropContext onDragEnd={onDragEnd}>
         {/* Responsive grid: columns shrink + wrap instead of forcing horizontal scroll */}
-        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {columns.map((col) => (
             <div
               key={col.id}
@@ -119,10 +129,9 @@ export default function HomePage() {
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    // ✅ Always has a drop zone (fixes “can’t drag back” esp. empty columns)
                     className={[
                       "space-y-3 rounded-md p-2",
-                      "min-h-[80px]", // IMPORTANT
+                      "min-h-[80px]", // keeps empty columns droppable
                       snapshot.isDraggingOver
                         ? "bg-gray-700/40"
                         : "bg-gray-900/20",
@@ -139,13 +148,26 @@ export default function HomePage() {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            className="rounded-md bg-gray-700 px-3 py-2 text-sm text-white shadow"
+                            className="relative rounded-md bg-gray-700 px-3 py-2 pr-10 text-sm text-white shadow"
                           >
                             {card.title}
+
+                            <button
+                              type="button"
+                              aria-label="Delete card"
+                              onClick={(e) => {
+                                e.stopPropagation(); // avoid starting drag
+                                deleteCard(col.id, card.id);
+                              }}
+                              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded bg-red-500/80 px-2 py-1 text-xs font-bold text-white hover:bg-red-500"
+                            >
+                              ✕
+                            </button>
                           </div>
                         )}
                       </Draggable>
                     ))}
+
                     {provided.placeholder}
                   </div>
                 )}
