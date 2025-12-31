@@ -1,14 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DropResult,
-} from "@hello-pangea/dnd";
-
-type ColumnId = "stuck" | "not_started" | "working_on_it" | "done" | "test";
+import { DragDropContext, DropResult } from "@hello-pangea/dnd";
+import KanbanColumn from "./components/kanban/KanbanColumn";
+import type { ColumnId } from "./components/kanban/KanbanCard";
 
 type Card = { id: string; title: string };
 
@@ -48,19 +43,19 @@ function reorder<T>(list: T[], startIndex: number, endIndex: number) {
 export default function HomePage() {
   const [columns, setColumns] = useState<Column[]>(initialColumns);
 
-  // Editing state (one card at a time)
+  // inline edit (one card at a time)
   const [editing, setEditing] = useState<{
     columnId: ColumnId;
     cardId: string;
   } | null>(null);
 
-  const [editValue, setEditValue] = useState<string>("");
+  const [editValue, setEditValue] = useState("");
 
   function onDragEnd(result: DropResult) {
     const { source, destination } = result;
     if (!destination) return;
 
-    // same column reorder
+    // reorder within same column
     if (source.droppableId === destination.droppableId) {
       setColumns((prev) =>
         prev.map((col) => {
@@ -77,7 +72,6 @@ export default function HomePage() {
     // move between columns
     setColumns((prev) => {
       const next = prev.map((c) => ({ ...c, cards: [...c.cards] }));
-
       const sourceCol = next.find((c) => c.id === source.droppableId)!;
       const destCol = next.find((c) => c.id === destination.droppableId)!;
 
@@ -102,7 +96,7 @@ export default function HomePage() {
   }
 
   function deleteCard(columnId: ColumnId, cardId: string) {
-    // If deleting the currently edited card, exit edit mode
+    // if deleting currently edited card, exit edit mode
     setEditing((cur) =>
       cur && cur.columnId === columnId && cur.cardId === cardId ? null : cur
     );
@@ -129,7 +123,6 @@ export default function HomePage() {
   function saveEdit(columnId: ColumnId, cardId: string) {
     const nextTitle = editValue.trim();
     if (!nextTitle) {
-      // Don’t allow empty title; just cancel
       cancelEdit();
       return;
     }
@@ -150,127 +143,37 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-black p-6 text-white">
-      <h1 className="mb-6 text-2xl font-bold">Kanban Board</h1>
-
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {columns.map((col) => (
-            <div
-              key={col.id}
-              className="min-w-0 w-full rounded-lg bg-gray-800 p-4"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-semibold">
-                  {col.title}{" "}
-                  <span className="text-sm text-gray-300">
-                    / {col.cards.length}
-                  </span>
-                </h2>
-              </div>
-
-              <Droppable droppableId={col.id}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={[
-                      "space-y-3 rounded-md p-2",
-                      "min-h-[80px]",
-                      snapshot.isDraggingOver
-                        ? "bg-gray-700/40"
-                        : "bg-gray-900/20",
-                    ].join(" ")}
-                  >
-                    {col.cards.map((card, index) => {
-                      const isEditing =
-                        editing?.columnId === col.id &&
-                        editing?.cardId === card.id;
-
-                      return (
-                        <Draggable
-                          key={card.id}
-                          draggableId={card.id}
-                          index={index}
-                          isDragDisabled={isEditing} // important!
-                        >
-                          {(provided) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className="relative rounded-md bg-gray-700 px-3 py-2 pr-20 text-sm text-white shadow"
-                            >
-                              {/* Title or input */}
-                              {isEditing ? (
-                                <input
-                                  autoFocus
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      saveEdit(col.id, card.id);
-                                    }
-                                    if (e.key === "Escape") {
-                                      e.preventDefault();
-                                      cancelEdit();
-                                    }
-                                  }}
-                                  onBlur={() => saveEdit(col.id, card.id)}
-                                  className="w-full rounded bg-gray-800 px-2 py-1 text-sm text-white outline-none ring-2 ring-white/20 focus:ring-white/40"
-                                />
-                              ) : (
-                                <div className="pr-2">{card.title}</div>
-                              )}
-
-                              {/* Buttons */}
-                              <div className="absolute right-2 top-1/2 z-10 flex -translate-y-1/2 gap-1">
-                                <button
-                                  type="button"
-                                  aria-label="Edit card"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    startEdit(col.id, card.id, card.title);
-                                  }}
-                                  className="rounded bg-gray-600/80 px-2 py-1 text-xs text-white hover:bg-gray-600"
-                                >
-                                  ✏️
-                                </button>
-
-                                <button
-                                  type="button"
-                                  aria-label="Delete card"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteCard(col.id, card.id);
-                                  }}
-                                  className="rounded bg-red-500/80 px-2 py-1 text-xs font-bold text-white hover:bg-red-500"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      );
-                    })}
-
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-
-              <button
-                onClick={() => addCard(col.id)}
-                className="mt-3 w-full rounded-md bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600"
-              >
-                + Add card
-              </button>
-            </div>
-          ))}
+    <main className="min-h-screen bg-gradient-to-br from-[#070A16] via-[#0B1030] to-[#070A16] p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-white">Kanban Board</h1>
         </div>
-      </DragDropContext>
+
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {columns.map((col) => (
+              <KanbanColumn
+                key={col.id}
+                columnId={col.id}
+                title={col.title}
+                cards={col.cards}
+                editingCardId={
+                  editing?.columnId === col.id ? editing.cardId : null
+                }
+                editValue={editValue}
+                onAddCard={() => addCard(col.id)}
+                onDeleteCard={(cardId) => deleteCard(col.id, cardId)}
+                onStartEdit={(cardId, currentTitle) =>
+                  startEdit(col.id, cardId, currentTitle)
+                }
+                onEditChange={setEditValue}
+                onSaveEdit={(cardId) => saveEdit(col.id, cardId)}
+                onCancelEdit={cancelEdit}
+              />
+            ))}
+          </div>
+        </DragDropContext>
+      </div>
     </main>
   );
 }
