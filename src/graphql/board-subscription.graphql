@@ -1,0 +1,17 @@
+subscription BoardLive($boardId: uuid!) {
+  boards_by_pk(id: $boardId) {
+    id
+    name
+    columns(order_by: { position: asc }) {
+      id
+      name
+      position
+    }
+    cards(order_by: { position: asc }) {
+      id
+      title
+      status
+      position
+    }
+  }
+}

@@ -1,0 +1,42 @@
+query BoardByPk($id: uuid!) {
+  boards_by_pk(id: $id) {
+    id
+    name
+    columns(order_by: { position: asc }) {
+      id
+      name
+      position
+    }
+    cards(order_by: { position: asc }) {
+      id
+      title
+      status
+      position
+      created_at
+    }
+  }
+}
+
+mutation InsertCard($object: cards_insert_input!) {
+  insert_cards_one(object: $object) {
+    id
+    title
+    status
+    position
+  }
+}
+
+mutation UpdateCard($id: uuid!, $_set: cards_set_input!) {
+  update_cards_by_pk(pk_columns: { id: $id }, _set: $_set) {
+    id
+    title
+    status
+    position
+  }
+}
+
+mutation DeleteCard($id: uuid!) {
+  delete_cards_by_pk(id: $id) {
+    id
+  }
+}
