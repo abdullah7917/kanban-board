@@ -1,15 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { nhost } from "@/lib/nhost";
 
 export default function SignOutButton() {
-  const router = useRouter();
-
   const onSignOut = async () => {
-    await nhost.auth.signOut();
-    router.replace("/auth");
-    router.refresh();
+    try {
+      await nhost.auth.signOut();
+    } finally {
+      // Hard redirect = always works (no router/hydration race)
+      window.location.assign("/auth");
+    }
   };
 
   return (
