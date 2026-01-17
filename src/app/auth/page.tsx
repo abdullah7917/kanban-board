@@ -1,42 +1,47 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { nhost } from "@/lib/nhost";
 
 type View = "signin" | "signup";
 
 export default function AuthPage() {
+  const router = useRouter();
+
   const [view, setView] = useState<View>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"loading" | "signed_in" | "signed_out">(
-    "loading"
+    "loading",
   );
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [msg, setMsg] = useState<string>("");
 
   async function refreshSession() {
     const session = await nhost.auth.getSession();
-    const isIn = !!session;
-    setStatus(isIn ? "signed_in" : "signed_out");
+    setStatus(session ? "signed_in" : "signed_out");
 
     const user = nhost.auth.getUser();
     setUserEmail(user?.email ?? null);
   }
 
   useEffect(() => {
-    // initial load
-    (async () => {
-      await refreshSession();
-    })();
+    // initial check
+    refreshSession();
 
-    // listen to auth changes
-    const unsubscribe = nhost.auth.onAuthStateChanged(() => {
+    // listen for auth changes
+    const unsubscribe = nhost.auth.onAuthStateChanged((_event, session) => {
       refreshSession();
+
+      // ✅ redirect after successful sign-in
+      if (session) {
+        router.replace("/boards");
+      }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [router]);
 
   async function onSignIn(e: React.FormEvent) {
     e.preventDefault();
