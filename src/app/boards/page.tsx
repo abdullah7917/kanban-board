@@ -29,7 +29,16 @@ export default function BoardsListPage() {
   });
 
   if (authLoading) return <p className="p-6">Checking session…</p>;
-  if (!isAuthenticated) return <p className="p-6">Please sign in</p>;
+  if (!isAuthenticated)
+    return (
+      <main className="p-6">
+        <p className="mb-3">Please sign in</p>
+        <Link className="underline" href="/auth">
+          Go to Sign In
+        </Link>
+      </main>
+    );
+
   if (loading) return <p className="p-6">Loading…</p>;
   if (error) return <p className="p-6">Error: {error.message}</p>;
 
