@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SignOutButton from "@/app/components/SignOutBotton";
 import { useParams } from "next/navigation";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import { useMutation, useSubscription } from "@apollo/client";
@@ -48,7 +49,7 @@ type CardUI = {
 export default function BoardPage() {
   const params = useParams();
   const raw = params?.boardId;
-  const boardId = Array.isArray(raw) ? raw[0] : raw ?? "";
+  const boardId = Array.isArray(raw) ? raw[0] : (raw ?? "");
 
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
 
@@ -82,7 +83,7 @@ export default function BoardPage() {
         title: c.title,
         status: c.status as ColumnId,
         position: c.position ?? 1,
-      }))
+      })),
     );
   }, [board?.cards]);
 
@@ -207,7 +208,7 @@ export default function BoardPage() {
             status: c.status,
           },
         },
-      })
+      }),
     );
 
     await Promise.all(updates);
@@ -227,8 +228,14 @@ export default function BoardPage() {
 
         {!authLoading && isAuthenticated && board && (
           <>
-            <h1 className="mb-1 text-2xl font-bold">Kanban Board</h1>
-            <p className="mb-6 text-sm text-white/70">Board: {board.name}</p>
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <h1 className="mb-1 text-2xl font-bold">Kanban Board</h1>
+                <p className="text-sm text-white/70">Board: {board.name}</p>
+              </div>
+
+              <SignOutButton />
+            </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
               {columns.map((col) => (

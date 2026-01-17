@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SignOutButton from "@/app/components/SignOutBotton";
 import { gql, useQuery } from "@apollo/client";
 import { useAuthenticationStatus } from "@nhost/nextjs";
 
@@ -46,8 +47,15 @@ export default function BoardsListPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 p-6 text-white">
-      <h1 className="text-2xl font-semibold">Boards</h1>
-      <p className="mt-1 text-sm text-white/70">Click a board to open it.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Boards</h1>
+          <p className="mt-1 text-sm text-white/70">
+            Click a board to open it.
+          </p>
+        </div>
+        <SignOutButton />
+      </div>
 
       {boards.length === 0 ? (
         <p className="mt-6 text-white/70">No boards found.</p>
