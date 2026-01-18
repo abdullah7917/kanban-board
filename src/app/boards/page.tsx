@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { gql, useMutation, useQuery } from "@apollo/client";
 import { useAuthenticationStatus } from "@nhost/nextjs";
 import SignOutButton from "@/app/components/SignOutButton";
@@ -156,12 +157,11 @@ export default function BoardsListPage() {
               </Link>
 
               <button
-                type="button"
                 onClick={() => onDelete(b.id, b.name)}
-                className="ml-4 text-white/60 hover:text-red-400"
+                className="ml-4 rounded-md p-1 text-white/50 hover:text-red-400 hover:bg-white/10"
                 title="Delete board"
               >
-                🗑️
+                <Trash2 size={18} />
               </button>
             </li>
           ))}
