@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import SignOutButton from "@/app/components/SignOutButton";
-import { gql, useMutation, useQuery } from "@apollo/client";
+import { gql, useQuery, useMutation } from "@apollo/client";
 import { useAuthenticationStatus } from "@nhost/nextjs";
+import SignOutButton from "@/app/components/SignOutButton";
 
 type DbBoard = {
   id: string;
@@ -21,29 +21,10 @@ const BOARDS = gql`
   }
 `;
 
-/**
- * Creates a board + default columns in ONE mutation (nested insert).
- * This only works if Hasura relationships are set:
- * boards -> columns (array relationship)
- */
-const INSERT_BOARD_WITH_COLUMNS = gql`
-  mutation InsertBoardWithColumns($boardName: String!) {
-    insert_boards_one(
-      object: {
-        name: $boardName
-        columns: {
-          data: [
-            { name: "Stuck", position: 1 }
-            { name: "Not Started", position: 2 }
-            { name: "Working on it", position: 3 }
-            { name: "Done", position: 4 }
-            { name: "Test", position: 5 }
-          ]
-        }
-      }
-    ) {
+const DELETE_BOARD = gql`
+  mutation DeleteBoard($id: uuid!) {
+    delete_boards_by_pk(id: $id) {
       id
-      name
     }
   }
 `;
@@ -53,33 +34,14 @@ export default function BoardsListPage() {
 
   const { data, loading, error } = useQuery<BoardsQueryData>(BOARDS, {
     skip: authLoading || !isAuthenticated,
-    fetchPolicy: "cache-first",
   });
 
-  const [insertBoard, { loading: creating }] = useMutation(
-    INSERT_BOARD_WITH_COLUMNS,
-    {
-      refetchQueries: [{ query: BOARDS }],
-    },
-  );
-
-  const onCreateBoard = async () => {
-    const name = prompt("Board name?");
-    if (!name) return;
-
-    try {
-      await insertBoard({
-        variables: { boardName: name },
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      alert("Create board failed: " + msg);
-    }
-  };
+  const [deleteBoard] = useMutation(DELETE_BOARD, {
+    refetchQueries: [{ query: BOARDS }],
+  });
 
   if (authLoading) return <p className="p-6">Checking session…</p>;
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated)
     return (
       <main className="p-6">
         <p className="mb-3">Please sign in</p>
@@ -88,16 +50,22 @@ export default function BoardsListPage() {
         </Link>
       </main>
     );
-  }
 
   if (loading) return <p className="p-6">Loading…</p>;
   if (error) return <p className="p-6">Error: {error.message}</p>;
 
   const boards = data?.boards ?? [];
 
+  const onDelete = async (id: string, name: string) => {
+    const ok = confirm(`Delete board "${name}"? This cannot be undone.`);
+    if (!ok) return;
+
+    await deleteBoard({ variables: { id } });
+  };
+
   return (
     <main className="min-h-screen bg-slate-950 p-6 text-white">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Boards</h1>
           <p className="mt-1 text-sm text-white/70">
@@ -105,41 +73,39 @@ export default function BoardsListPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onCreateBoard}
-            disabled={creating}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-60"
+        <div className="flex gap-3">
+          <Link
+            href="/boards/new"
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
           >
-            {creating ? "Creating…" : "New board"}
-          </button>
+            New board
+          </Link>
           <SignOutButton />
         </div>
       </div>
 
       {boards.length === 0 ? (
-        <div className="mt-8 space-y-3 text-white/70">
-          <p>No boards found.</p>
-          <button
-            type="button"
-            onClick={onCreateBoard}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-          >
-            Create your first board
-          </button>
-        </div>
+        <p className="mt-6 text-white/70">No boards found.</p>
       ) : (
-        <ul className="mt-6 space-y-3">
+        <ul className="space-y-3">
           {boards.map((b) => (
-            <li key={b.id}>
-              <Link
-                href={`/boards/${b.id}`}
-                className="block rounded-lg border border-white/10 bg-white/5 px-4 py-3 hover:bg-white/10"
-              >
+            <li
+              key={b.id}
+              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
+            >
+              <Link href={`/boards/${b.id}`} className="flex-1 hover:underline">
                 <div className="font-medium">{b.name}</div>
-                <div className="mt-1 text-xs text-white/60">{b.id}</div>
+                <div className="text-xs text-white/50">{b.id}</div>
               </Link>
+
+              {/* 🗑️ Delete button */}
+              <button
+                onClick={() => onDelete(b.id, b.name)}
+                className="ml-4 text-white/60 hover:text-red-400"
+                title="Delete board"
+              >
+                🗑️
+              </button>
             </li>
           ))}
         </ul>
