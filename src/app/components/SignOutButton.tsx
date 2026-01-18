@@ -8,7 +8,7 @@ export default function SignOutButton() {
       await nhost.auth.signOut();
     } finally {
       // Hard redirect = always works (no router/hydration race)
-      window.location.assign("/auth?next=/boards");
+      window.location.replace("/auth?next=/boards");
     }
   };
 

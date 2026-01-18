@@ -23,13 +23,20 @@ function AuthInner() {
 
   async function refreshSession() {
     const session = await nhost.auth.getSession();
-    const isIn = !!session;
-    setStatus(isIn ? "signed_in" : "signed_out");
-
     const user = nhost.auth.getUser();
+
+    // ✅ Strong check: session must have an access token AND a user must exist
+    const accessToken =
+      typeof session?.accessToken === "string"
+        ? session.accessToken
+        : (session as any)?.accessToken?.value;
+
+    const isIn = !!accessToken && !!user;
+
+    setStatus(isIn ? "signed_in" : "signed_out");
     setUserEmail(user?.email ?? null);
 
-    // If already signed in, go where we want (usually /boards)
+    // ✅ Only redirect if truly signed in
     if (isIn) router.replace(next);
   }
 
