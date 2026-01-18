@@ -3,7 +3,7 @@
 import Link from "next/link";
 import SignOutButton from "@/app/components/SignOutButton";
 import { gql, useMutation, useQuery } from "@apollo/client";
-import { useAuthenticationStatus, useUserId } from "@nhost/nextjs";
+import { useAuthenticationStatus } from "@nhost/nextjs";
 
 type DbBoard = {
   id: string;
@@ -21,10 +21,27 @@ const BOARDS = gql`
   }
 `;
 
-// ✅ Minimal insert (works with common schema: name text)
-const INSERT_BOARD = gql`
-  mutation InsertBoard($object: boards_insert_input!) {
-    insert_boards_one(object: $object) {
+/**
+ * Creates a board + default columns in ONE mutation (nested insert).
+ * This only works if Hasura relationships are set:
+ * boards -> columns (array relationship)
+ */
+const INSERT_BOARD_WITH_COLUMNS = gql`
+  mutation InsertBoardWithColumns($boardName: String!) {
+    insert_boards_one(
+      object: {
+        name: $boardName
+        columns: {
+          data: [
+            { name: "Stuck", position: 1 }
+            { name: "Not Started", position: 2 }
+            { name: "Working on it", position: 3 }
+            { name: "Done", position: 4 }
+            { name: "Test", position: 5 }
+          ]
+        }
+      }
+    ) {
       id
       name
     }
@@ -33,30 +50,31 @@ const INSERT_BOARD = gql`
 
 export default function BoardsListPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
-  const userId = useUserId(); // may be null briefly
 
   const { data, loading, error } = useQuery<BoardsQueryData>(BOARDS, {
     skip: authLoading || !isAuthenticated,
     fetchPolicy: "cache-first",
   });
 
-  const [insertBoard, { loading: creating }] = useMutation(INSERT_BOARD, {
-    refetchQueries: [{ query: BOARDS }],
-  });
+  const [insertBoard, { loading: creating }] = useMutation(
+    INSERT_BOARD_WITH_COLUMNS,
+    {
+      refetchQueries: [{ query: BOARDS }],
+    },
+  );
 
   const onCreateBoard = async () => {
     const name = prompt("Board name?");
     if (!name) return;
 
-    await insertBoard({
-      variables: {
-        object: {
-          name,
-          // Optional (only include if your schema has an owner column)
-          // owner_id: userId,
-        },
-      },
-    });
+    try {
+      await insertBoard({
+        variables: { boardName: name },
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("Create board failed: " + msg);
+    }
   };
 
   if (authLoading) return <p className="p-6">Checking session…</p>;
