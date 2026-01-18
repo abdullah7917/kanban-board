@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import SignOutButton from "@/app/components/SignOutBotton";
+import SignOutButton from "@/app/components/SignOutButton";
 import { gql, useQuery } from "@apollo/client";
 import { useAuthenticationStatus } from "@nhost/nextjs";
 
@@ -24,21 +25,22 @@ const BOARDS = gql`
 export default function BoardsListPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
 
+  // ✅ If signed out, force leaving /boards (fixes "stuck on boards list" issue)
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      window.location.replace("/auth");
+    }
+  }, [authLoading, isAuthenticated]);
+
   const { data, loading, error } = useQuery<BoardsQueryData>(BOARDS, {
     skip: authLoading || !isAuthenticated,
     fetchPolicy: "cache-first",
   });
 
   if (authLoading) return <p className="p-6">Checking session…</p>;
-  if (!isAuthenticated)
-    return (
-      <main className="p-6">
-        <p className="mb-3">Please sign in</p>
-        <Link className="underline" href="/auth">
-          Go to Sign In
-        </Link>
-      </main>
-    );
+
+  // While redirecting, show a simple message (avoids flicker)
+  if (!isAuthenticated) return <p className="p-6">Redirecting to sign in…</p>;
 
   if (loading) return <p className="p-6">Loading…</p>;
   if (error) return <p className="p-6">Error: {error.message}</p>;

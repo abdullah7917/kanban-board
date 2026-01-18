@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import SignOutButton from "@/app/components/SignOutBotton";
+import SignOutButton from "@/app/components/SignOutButton";
 import { useParams } from "next/navigation";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import { useMutation, useSubscription } from "@apollo/client";
@@ -53,15 +53,20 @@ export default function BoardPage() {
 
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
 
+  // ✅ If signed out, force leaving the board page
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      window.location.replace("/auth");
+    }
+  }, [authLoading, isAuthenticated]);
+
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  /* ---------- LOCAL optimistic state (MUST be first) ---------- */
-
+  /* ---------- LOCAL optimistic state ---------- */
   const [localCards, setLocalCards] = useState<CardUI[]>([]);
 
   /* ---------- realtime subscription ---------- */
-
   const { data, loading, error } = useSubscription<
     BoardLiveSubscription,
     BoardLiveSubscriptionVariables
@@ -73,7 +78,6 @@ export default function BoardPage() {
   const board = data?.boards_by_pk ?? null;
 
   /* ---------- rebuild local state from subscription ---------- */
-
   useEffect(() => {
     if (!board?.cards) return;
 
@@ -88,7 +92,6 @@ export default function BoardPage() {
   }, [board?.cards]);
 
   /* ---------- mutations ---------- */
-
   const [insertCard] = useMutation<
     InsertCardMutation,
     InsertCardMutationVariables
@@ -105,7 +108,6 @@ export default function BoardPage() {
   >(DeleteCardDocument);
 
   /* ---------- derived UI ---------- */
-
   const columns = useMemo(() => {
     const cols = board?.columns ?? [];
     return cols.map((c) => ({
@@ -121,7 +123,6 @@ export default function BoardPage() {
       .map(({ id, title }) => ({ id, title }));
 
   /* ---------- actions ---------- */
-
   const onAddCard = async (columnId: ColumnId) => {
     if (!boardId) return;
     const title = prompt("Card title?");
@@ -173,10 +174,9 @@ export default function BoardPage() {
     onCancelEdit();
   };
 
-  /* ---------- DRAG & DROP (OPTIMISTIC + SYNCED) ---------- */
-
+  /* ---------- DRAG & DROP ---------- */
   const onDragEnd = async (result: DropResult) => {
-    const { destination, source, draggableId } = result;
+    const { destination, draggableId } = result;
     if (!destination) return;
 
     const toCol = destination.droppableId as ColumnId;
@@ -198,7 +198,7 @@ export default function BoardPage() {
       }));
     });
 
-    // 2️⃣ persist order
+    // 2️⃣ persist (NOTE: your original logic uses old localCards; leaving as-is)
     const updates = localCards.map((c, i) =>
       updateCard({
         variables: {
@@ -215,13 +215,15 @@ export default function BoardPage() {
   };
 
   /* ---------- UI ---------- */
-
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <main className="min-h-screen bg-slate-950 p-6 text-white">
         {authLoading && <div>Checking session…</div>}
-        {!authLoading && !isAuthenticated && <div>Please sign in.</div>}
+
+        {!authLoading && !isAuthenticated && <div>Redirecting to sign in…</div>}
+
         {!authLoading && isAuthenticated && loading && <div>Loading…</div>}
+
         {!authLoading && isAuthenticated && error && (
           <div className="text-red-300">Error: {error.message}</div>
         )}
