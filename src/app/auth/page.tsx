@@ -25,7 +25,6 @@ function AuthInner() {
     const session = await nhost.auth.getSession();
     const user = nhost.auth.getUser();
 
-    // ✅ Strong check: session must have an access token AND a user must exist
     const accessToken =
       typeof session?.accessToken === "string"
         ? session.accessToken
@@ -36,12 +35,28 @@ function AuthInner() {
     setStatus(isIn ? "signed_in" : "signed_out");
     setUserEmail(user?.email ?? null);
 
-    // ✅ Only redirect if truly signed in
+    // ✅ If we're in the middle of signing out, NEVER redirect to /boards
+    const signingOut = sessionStorage.getItem("mycritters_signing_out") === "1";
+    if (signingOut) {
+      // Once we are truly signed out, clear the flag
+      if (!isIn) sessionStorage.removeItem("mycritters_signing_out");
+      return;
+    }
+
+    // ✅ Only redirect if truly signed in AND not signing out
     if (isIn) router.replace(next);
   }
 
   useEffect(() => {
-    refreshSession();
+    // If we land here during sign-out, force a signOut once more (safe + idempotent)
+    const signingOut = sessionStorage.getItem("mycritters_signing_out") === "1";
+    if (signingOut) {
+      nhost.auth.signOut().finally(() => {
+        refreshSession();
+      });
+    } else {
+      refreshSession();
+    }
 
     const unsubscribe = nhost.auth.onAuthStateChanged(() => {
       refreshSession();
@@ -56,7 +71,6 @@ function AuthInner() {
     setMsg("");
     const res = await nhost.auth.signIn({ email, password });
     if (res.error) setMsg(res.error.message);
-    // success redirect happens via refreshSession()
   }
 
   async function onSignUp(e: React.FormEvent) {
@@ -69,8 +83,9 @@ function AuthInner() {
 
   async function onSignOut() {
     setMsg("");
+    sessionStorage.setItem("mycritters_signing_out", "1");
     await nhost.auth.signOut();
-    router.replace("/auth");
+    window.location.replace("/auth?next=/boards");
   }
 
   return (
@@ -90,10 +105,15 @@ function AuthInner() {
             <button
               className="border px-3 py-2"
               onClick={() => router.push("/boards")}
+              type="button"
             >
               Go to Boards
             </button>
-            <button className="border px-3 py-2" onClick={onSignOut}>
+            <button
+              className="border px-3 py-2"
+              onClick={onSignOut}
+              type="button"
+            >
               Sign out
             </button>
           </div>
@@ -155,8 +175,6 @@ function AuthInner() {
 }
 
 export default function AuthPage() {
-  // This is the key fix for Vercel build:
-  // useSearchParams must be inside Suspense.
   return (
     <Suspense fallback={<main className="p-6">Loading…</main>}>
       <AuthInner />

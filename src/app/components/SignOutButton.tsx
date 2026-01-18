@@ -4,10 +4,13 @@ import { nhost } from "@/lib/nhost";
 
 export default function SignOutButton() {
   const onSignOut = async () => {
+    // ✅ tell /auth page: do NOT auto-redirect while we’re signing out
+    sessionStorage.setItem("mycritters_signing_out", "1");
+
     try {
       await nhost.auth.signOut();
     } finally {
-      // Hard redirect = always works (no router/hydration race)
+      // ✅ hard redirect
       window.location.replace("/auth?next=/boards");
     }
   };
