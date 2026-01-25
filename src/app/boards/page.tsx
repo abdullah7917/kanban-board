@@ -1,32 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Trash2, Check, X } from "lucide-react";
 import { gql, useMutation, useQuery } from "@apollo/client";
-import { useAuthenticationStatus } from "@nhost/nextjs";
+import { useAuthenticationStatus, useUserId } from "@nhost/nextjs";
 import SignOutButton from "@/app/components/SignOutButton";
+
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 
 type DbBoard = {
   id: string;
   name: string;
+  user_id?: string | null;
+  position?: number | null;
 };
 
 type BoardsQueryData = { boards: DbBoard[] };
 
 const BOARDS = gql`
-  query Boards {
-    boards(order_by: { created_at: desc }) {
+  query Boards($userId: uuid!) {
+    boards(where: { user_id: { _eq: $userId } }, order_by: { position: asc }) {
       id
       name
+      user_id
+      position
     }
   }
 `;
 
 const CREATE_BOARD = gql`
-  mutation CreateBoard($name: String!) {
-    insert_boards_one(object: { name: $name }) {
+  mutation CreateBoard($name: String!, $position: Int!) {
+    insert_boards_one(object: { name: $name, position: $position }) {
       id
       name
+      position
     }
   }
 `;
@@ -47,21 +60,84 @@ const DELETE_BOARD = gql`
   }
 `;
 
+const UPDATE_BOARD = gql`
+  mutation UpdateBoard($id: uuid!, $_set: boards_set_input!) {
+    update_boards_by_pk(pk_columns: { id: $id }, _set: $_set) {
+      id
+      name
+      position
+    }
+  }
+`;
+
+// Bulk update positions after drag-and-drop
+const UPDATE_BOARD_POSITIONS = gql`
+  mutation UpdateBoardPositions($updates: [boards_updates!]!) {
+    update_boards_many(updates: $updates) {
+      affected_rows
+    }
+  }
+`;
+
+function reorder<T>(list: T[], startIndex: number, endIndex: number) {
+  const result = Array.from(list);
+  const [removed] = result.splice(startIndex, 1);
+  result.splice(endIndex, 0, removed);
+  return result;
+}
+
 export default function BoardsListPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthenticationStatus();
+  const userId = useUserId();
+
+  // Prevent hydration mismatch flicker on auth-dependent UI
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // ----- EDIT STATE -----
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+
+  // Local list state for instant DnD UX
+  const [localBoards, setLocalBoards] = useState<DbBoard[]>([]);
+
+  // Hooks MUST be called unconditionally
+  const canRun = mounted && !authLoading && !!isAuthenticated && !!userId;
 
   const { data, loading, error, refetch } = useQuery<BoardsQueryData>(BOARDS, {
-    skip: authLoading || !isAuthenticated,
+    variables: { userId: (userId ?? "") as any },
+    skip: !canRun,
     fetchPolicy: "cache-first",
   });
 
-  const [createBoard, { loading: creating }] = useMutation(CREATE_BOARD);
+  const [createBoard, { loading: creating }] = useMutation(CREATE_BOARD, {
+    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
+  });
+
   const [createDefaultColumns] = useMutation(CREATE_DEFAULT_COLUMNS);
 
   const [deleteBoard] = useMutation(DELETE_BOARD, {
-    refetchQueries: [{ query: BOARDS }],
+    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
   });
 
+  const [updateBoard] = useMutation(UPDATE_BOARD, {
+    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
+  });
+
+  const [updateBoardPositions] = useMutation(UPDATE_BOARD_POSITIONS, {
+    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
+  });
+
+  const boardsFromServer = useMemo(() => data?.boards ?? [], [data]);
+
+  // Keep localBoards in sync with server boards (unless user is actively editing/dragging)
+  useEffect(() => {
+    setLocalBoards(boardsFromServer);
+  }, [boardsFromServer]);
+
+  // ----- EARLY RENDERING (after hooks are defined) -----
+  if (!mounted) return <p className="p-6">Loading…</p>;
   if (authLoading) return <p className="p-6">Checking session…</p>;
 
   if (!isAuthenticated) {
@@ -78,45 +154,124 @@ export default function BoardsListPage() {
   if (loading) return <p className="p-6">Loading…</p>;
   if (error) return <p className="p-6">Error: {error.message}</p>;
 
-  const boards = data?.boards ?? [];
-
+  // ----- ACTIONS -----
   const onCreateBoard = async () => {
     const name = prompt("Board name?");
     const trimmed = name?.trim();
     if (!trimmed) return;
 
-    // 1) Create board
-    const res = await createBoard({ variables: { name: trimmed } });
-    const newBoardId = res.data?.insert_boards_one?.id;
-    if (!newBoardId) return;
+    const nextPos =
+      localBoards.length === 0
+        ? 0
+        : Math.max(...localBoards.map((b) => b.position ?? 0)) + 1;
 
-    // 2) Create default columns
-    const defaults = [
-      { name: "Stuck", position: 1 },
-      { name: "Not Started", position: 2 },
-      { name: "Working on it", position: 3 },
-      { name: "Done", position: 4 },
-      { name: "Test", position: 5 },
-    ];
+    setBusy(true);
+    try {
+      // Create board
+      const res = await createBoard({
+        variables: { name: trimmed, position: nextPos },
+      });
 
-    await createDefaultColumns({
-      variables: {
-        objects: defaults.map((c) => ({
-          board_id: newBoardId,
-          name: c.name,
-          position: c.position,
-        })),
-      },
-    });
+      const newBoardId = res.data?.insert_boards_one?.id;
+      if (!newBoardId) return;
 
-    // 3) Refresh list (stay on /boards)
-    await refetch();
+      // Create default columns
+      const defaults = [
+        { name: "Stuck", position: 0 },
+        { name: "Not Started", position: 1 },
+        { name: "Working on it", position: 2 },
+        { name: "Done", position: 3 },
+        { name: "Test", position: 4 },
+      ];
+
+      await createDefaultColumns({
+        variables: {
+          objects: defaults.map((c) => ({
+            board_id: newBoardId,
+            name: c.name,
+            position: c.position,
+          })),
+        },
+      });
+
+      await refetch();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onDelete = async (id: string, name: string) => {
     const ok = confirm(`Delete board "${name}"? This cannot be undone.`);
     if (!ok) return;
-    await deleteBoard({ variables: { id } });
+
+    setBusy(true);
+    try {
+      await deleteBoard({ variables: { id } });
+      // local update (snappier)
+      setLocalBoards((prev) => prev.filter((b) => b.id !== id));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEdit = (b: DbBoard) => {
+    setEditingId(b.id);
+    setDraftName(b.name);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraftName("");
+  };
+
+  const saveEdit = async (id: string) => {
+    const trimmed = draftName.trim();
+    if (!trimmed) return;
+
+    setBusy(true);
+    try {
+      await updateBoard({
+        variables: { id, _set: { name: trimmed } },
+      });
+      cancelEdit();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+
+    const from = result.source.index;
+    const to = result.destination.index;
+    if (from === to) return;
+
+    // Don’t allow drag while renaming (keeps UX clean)
+    if (editingId) return;
+
+    const next = reorder(localBoards, from, to);
+
+    // Update UI immediately
+    setLocalBoards(next);
+
+    // Persist positions (0..n-1)
+    const updates = next.map((b, index) => ({
+      where: { id: { _eq: b.id } },
+      _set: { position: index },
+    }));
+
+    setBusy(true);
+    try {
+      await updateBoardPositions({ variables: { updates } });
+      await refetch();
+    } catch (e) {
+      // If something fails, fallback to server truth
+      await refetch();
+      setLocalBoards(boardsFromServer);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -133,7 +288,7 @@ export default function BoardsListPage() {
           <button
             type="button"
             onClick={onCreateBoard}
-            disabled={creating}
+            disabled={creating || busy}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-60"
           >
             {creating ? "Creating..." : "New board"}
@@ -142,30 +297,127 @@ export default function BoardsListPage() {
         </div>
       </div>
 
-      {boards.length === 0 ? (
+      {localBoards.length === 0 ? (
         <p className="mt-6 text-white/70">No boards found.</p>
       ) : (
-        <ul className="space-y-3">
-          {boards.map((b) => (
-            <li
-              key={b.id}
-              className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3"
-            >
-              <Link href={`/boards/${b.id}`} className="flex-1 hover:underline">
-                <div className="font-medium">{b.name}</div>
-                <div className="text-xs text-white/50">{b.id}</div>
-              </Link>
-
-              <button
-                onClick={() => onDelete(b.id, b.name)}
-                className="ml-4 rounded-md p-1 text-white/50 hover:text-red-400 hover:bg-white/10"
-                title="Delete board"
+        <DragDropContext onDragEnd={onDragEnd}>
+          <Droppable droppableId="boards-list">
+            {(dropProvided) => (
+              <ul
+                ref={dropProvided.innerRef}
+                {...dropProvided.droppableProps}
+                className="space-y-3"
               >
-                <Trash2 size={18} />
-              </button>
-            </li>
-          ))}
-        </ul>
+                {localBoards.map((b, index) => {
+                  const isEditing = editingId === b.id;
+
+                  return (
+                    <Draggable
+                      key={b.id}
+                      draggableId={b.id}
+                      index={index}
+                      isDragDisabled={busy || isEditing}
+                    >
+                      {(dragProvided, dragSnapshot) => (
+                        <li
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          className={[
+                            "flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-4 py-3",
+                            dragSnapshot.isDragging ? "bg-white/10" : "",
+                          ].join(" ")}
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            {/* Drag handle */}
+                            <div
+                              {...dragProvided.dragHandleProps}
+                              className="cursor-grab select-none text-white/30 hover:text-white/60"
+                              title="Drag to reorder"
+                            >
+                              ⋮⋮
+                            </div>
+
+                            <div className="flex-1">
+                              {isEditing ? (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    value={draftName}
+                                    onChange={(e) =>
+                                      setDraftName(e.target.value)
+                                    }
+                                    className="w-full max-w-md rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-white/30"
+                                    placeholder="Board name"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") saveEdit(b.id);
+                                      if (e.key === "Escape") cancelEdit();
+                                    }}
+                                  />
+
+                                  <button
+                                    onClick={() => saveEdit(b.id)}
+                                    disabled={busy}
+                                    className="rounded-md p-1 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-60"
+                                    title="Save"
+                                  >
+                                    <Check size={18} />
+                                  </button>
+
+                                  <button
+                                    onClick={cancelEdit}
+                                    disabled={busy}
+                                    className="rounded-md p-1 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-60"
+                                    title="Cancel"
+                                  >
+                                    <X size={18} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <Link
+                                  href={`/boards/${b.id}`}
+                                  className="block hover:underline"
+                                >
+                                  <div className="font-medium">{b.name}</div>
+                                  <div className="text-xs text-white/50">
+                                    {b.id}
+                                  </div>
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="ml-4 flex items-center gap-2">
+                            {!isEditing && (
+                              <button
+                                onClick={() => startEdit(b)}
+                                disabled={busy}
+                                className="rounded-md p-1 text-white/50 hover:text-white hover:bg-white/10 disabled:opacity-60"
+                                title="Rename board"
+                              >
+                                <Pencil size={18} />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => onDelete(b.id, b.name)}
+                              disabled={busy}
+                              className="rounded-md p-1 text-white/50 hover:text-red-400 hover:bg-white/10 disabled:opacity-60"
+                              title="Delete board"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </li>
+                      )}
+                    </Draggable>
+                  );
+                })}
+                {dropProvided.placeholder}
+              </ul>
+            )}
+          </Droppable>
+        </DragDropContext>
       )}
     </main>
   );

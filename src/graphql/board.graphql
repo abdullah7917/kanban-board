@@ -46,3 +46,63 @@ mutation DeleteBoard($id: uuid!) {
     id
   }
 }
+
+mutation UpdateBoard($id: uuid!, $_set: boards_set_input!) {
+  update_boards_by_pk(pk_columns: { id: $id }, _set: $_set) {
+    id
+    name
+    position
+  }
+}
+
+mutation InsertColumn($boardId: uuid!, $name: String!, $position: Int!) {
+  insert_columns_one(
+    object: { board_id: $boardId, name: $name, position: $position }
+  ) {
+    id
+    name
+    position
+    board_id
+  }
+}
+
+mutation UpdateColumn($id: uuid!, $_set: columns_set_input!) {
+  update_columns_by_pk(pk_columns: { id: $id }, _set: $_set) {
+    id
+    name
+    position
+    board_id
+  }
+}
+
+mutation DeleteColumn($id: uuid!) {
+  delete_columns_by_pk(id: $id) {
+    id
+  }
+}
+
+# When a column is renamed, we must move cards from old status -> new status
+mutation RenameCardsStatus($boardId: uuid!, $from: String!, $to: String!) {
+  update_cards(
+    where: { board_id: { _eq: $boardId }, status: { _eq: $from } }
+    _set: { status: $to }
+  ) {
+    affected_rows
+  }
+}
+
+# When deleting a column, simplest safe behavior: delete cards inside it
+mutation DeleteCardsInColumn($boardId: uuid!, $status: String!) {
+  delete_cards(
+    where: { board_id: { _eq: $boardId }, status: { _eq: $status } }
+  ) {
+    affected_rows
+  }
+}
+
+mutation UpdateColumnPosition($id: uuid!, $position: Int!) {
+  update_columns_by_pk(pk_columns: { id: $id }, _set: { position: $position }) {
+    id
+    position
+  }
+}

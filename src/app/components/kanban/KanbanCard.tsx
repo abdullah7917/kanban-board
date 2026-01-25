@@ -5,12 +5,8 @@ import type {
   DraggableProvidedDragHandleProps,
 } from "@hello-pangea/dnd";
 
-export type ColumnId =
-  | "stuck"
-  | "not_started"
-  | "working_on_it"
-  | "done"
-  | "test";
+// ✅ Allow dynamic columns (like "Review", "Blocked", etc.)
+export type ColumnId = string;
 
 type KanbanCardProps = {
   title: string;
@@ -50,7 +46,7 @@ export default function KanbanCard({
       ref={innerRef}
       {...draggableProps}
       {...dragHandleProps}
-      className="group relative rounded-lg bg-white  px-3 py-3 text-sm text-slate-900 shadow-md ring-1 ring-black/5"
+      className="group relative rounded-lg bg-white px-3 py-3 text-sm text-slate-900 shadow-md ring-1 ring-black/5"
     >
       {isEditing ? (
         <input

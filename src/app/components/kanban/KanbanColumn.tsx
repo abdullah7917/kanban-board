@@ -1,18 +1,29 @@
 "use client";
 
 import { Droppable, Draggable } from "@hello-pangea/dnd";
+import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import KanbanCard, { ColumnId } from "./KanbanCard";
+import { Pencil, X, Check } from "lucide-react";
 
 type Card = { id: string; title: string };
 
 type KanbanColumnProps = {
+  // DB id needed for rename/delete
+  dbColumnId: string;
+
+  // DnD id (we use column name)
   columnId: ColumnId;
+
   title: string;
   cards: Card[];
 
-  // editing state from page
+  // card editing state from page
   editingCardId: string | null;
   editValue: string;
+
+  // column editing state from page
+  isEditingColumn: boolean;
+  columnDraft: string;
 
   // actions from page
   onAddCard: () => void;
@@ -22,10 +33,20 @@ type KanbanColumnProps = {
   onEditChange: (next: string) => void;
   onSaveEdit: (cardId: string) => void;
   onCancelEdit: () => void;
+
+  // column actions from page
+  onStartEditColumn: () => void;
+  onChangeColumnDraft: (next: string) => void;
+  onSaveColumn: () => void;
+  onCancelColumn: () => void;
+  onDeleteColumn: () => void;
+
+  // ✅ NEW: makes header the drag handle for column DnD
+  columnDragHandleProps?: DraggableProvidedDragHandleProps | null;
 };
 
-// Column container colors (screenshot vibe)
-const columnShell: Record<ColumnId, string> = {
+// default colors for known columns; custom columns get fallback
+const columnShell: Record<string, string> = {
   stuck: "bg-pink-600/80",
   not_started: "bg-blue-600/80",
   working_on_it: "bg-yellow-500/100",
@@ -33,32 +54,124 @@ const columnShell: Record<ColumnId, string> = {
   test: "bg-red-600/80",
 };
 
+function toShellKey(columnId: string) {
+  return columnId.trim().toLowerCase().replace(/\s+/g, "_");
+}
+
 export default function KanbanColumn({
+  dbColumnId,
   columnId,
   title,
   cards,
   editingCardId,
   editValue,
+  isEditingColumn,
+  columnDraft,
   onAddCard,
   onDeleteCard,
   onStartEdit,
   onEditChange,
   onSaveEdit,
   onCancelEdit,
+  onStartEditColumn,
+  onChangeColumnDraft,
+  onSaveColumn,
+  onCancelColumn,
+  onDeleteColumn,
+  columnDragHandleProps, // ✅ NEW
 }: KanbanColumnProps) {
+  const shellKey = toShellKey(columnId);
+  const shellClass = columnShell[shellKey] ?? "bg-white/10";
+
   return (
     <div
       className={[
-        "min-w-0 w-full rounded-xl shadow-lg ring-1 ring-white/10",
-        columnShell[columnId],
+        "group min-w-0 w-full rounded-xl shadow-lg ring-1 ring-white/10",
+        shellClass,
       ].join(" ")}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <h2 className="text-sm font-semibold text-white">
-          {title}{" "}
-          <span className="font-normal text-white/80">/ {cards.length}</span>
-        </h2>
+      {/* Header (drag handle) */}
+      <div
+        className={[
+          "flex items-center justify-between px-4 pb-2 pt-4",
+          // ✅ subtle UX: show grab cursor when draggable
+          !isEditingColumn && columnDragHandleProps
+            ? "cursor-grab active:cursor-grabbing"
+            : "",
+        ].join(" ")}
+        // ✅ THIS is the key step: allow dragging column by header
+        {...(!isEditingColumn ? columnDragHandleProps : undefined)}
+      >
+        {isEditingColumn ? (
+          <div className="flex w-full items-center gap-2">
+            <input
+              autoFocus
+              value={columnDraft}
+              onChange={(e) => onChangeColumnDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSaveColumn();
+                if (e.key === "Escape") onCancelColumn();
+              }}
+              className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none focus:border-white/30"
+              placeholder="Column name"
+            />
+
+            <button
+              onClick={onSaveColumn}
+              className="rounded-md p-1 text-white/70 hover:bg-white/10 hover:text-white"
+              title="Save"
+              type="button"
+            >
+              <Check size={18} />
+            </button>
+
+            <button
+              onClick={onCancelColumn}
+              className="rounded-md p-1 text-white/50 hover:bg-white/10 hover:text-white"
+              title="Cancel"
+              type="button"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex w-full items-center justify-between">
+            <h2 className="text-sm font-semibold text-white">
+              {title}{" "}
+              <span className="font-normal text-white/80">
+                / {cards.length}
+              </span>
+            </h2>
+
+            {/* Hover actions (same behavior as cards) */}
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                type="button"
+                onClick={(e) => {
+                  // ✅ prevent header drag from triggering when clicking buttons
+                  e.stopPropagation();
+                  onStartEditColumn();
+                }}
+                className="rounded-md bg-black/20 px-2 py-1 text-xs text-white/80 hover:bg-black/30"
+                title="Rename column"
+              >
+                <Pencil size={16} />
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteColumn();
+                }}
+                className="rounded-md bg-black/20 px-2 py-1 text-xs font-bold text-white/80 hover:bg-black/30 hover:text-red-200"
+                title="Delete column"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Inner surface */}
@@ -107,10 +220,10 @@ export default function KanbanColumn({
 
               {droppableProvided.placeholder}
 
-              {/* Link-style add */}
               <button
                 onClick={onAddCard}
                 className="mt-3 w-full rounded-md px-2 py-2 text-left text-sm font-medium text-white/90 hover:bg-white/10"
+                type="button"
               >
                 + Add card
               </button>
