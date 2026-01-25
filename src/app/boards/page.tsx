@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, Check, X } from "lucide-react";
-import { gql, useMutation, useQuery } from "@apollo/client";
+import { gql, useMutation, useSubscription } from "@apollo/client";
 import { useAuthenticationStatus, useUserId } from "@nhost/nextjs";
 import SignOutButton from "@/app/components/SignOutButton";
 
@@ -21,10 +21,10 @@ type DbBoard = {
   position?: number | null;
 };
 
-type BoardsQueryData = { boards: DbBoard[] };
+type BoardsSubData = { boards: DbBoard[] };
 
-const BOARDS = gql`
-  query Boards($userId: uuid!) {
+const BOARDS_LIVE = gql`
+  subscription BoardsLive($userId: uuid!) {
     boards(where: { user_id: { _eq: $userId } }, order_by: { position: asc }) {
       id
       name
@@ -101,40 +101,39 @@ export default function BoardsListPage() {
 
   // Local list state for instant DnD UX
   const [localBoards, setLocalBoards] = useState<DbBoard[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Hooks MUST be called unconditionally
   const canRun = mounted && !authLoading && !!isAuthenticated && !!userId;
 
-  const { data, loading, error, refetch } = useQuery<BoardsQueryData>(BOARDS, {
+  const { data, loading, error } = useSubscription<BoardsSubData>(BOARDS_LIVE, {
     variables: { userId: (userId ?? "") as any },
     skip: !canRun,
-    fetchPolicy: "cache-first",
   });
 
-  const [createBoard, { loading: creating }] = useMutation(CREATE_BOARD, {
-    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
-  });
-
+  const [createBoard, { loading: creating }] = useMutation(CREATE_BOARD);
   const [createDefaultColumns] = useMutation(CREATE_DEFAULT_COLUMNS);
-
-  const [deleteBoard] = useMutation(DELETE_BOARD, {
-    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
-  });
-
-  const [updateBoard] = useMutation(UPDATE_BOARD, {
-    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
-  });
-
-  const [updateBoardPositions] = useMutation(UPDATE_BOARD_POSITIONS, {
-    refetchQueries: userId ? [{ query: BOARDS, variables: { userId } }] : [],
-  });
+  const [deleteBoard] = useMutation(DELETE_BOARD);
+  const [updateBoard] = useMutation(UPDATE_BOARD);
+  const [updateBoardPositions] = useMutation(UPDATE_BOARD_POSITIONS);
 
   const boardsFromServer = useMemo(() => data?.boards ?? [], [data]);
 
-  // Keep localBoards in sync with server boards (unless user is actively editing/dragging)
+  // Key that changes even when Apollo updates items "in place"
+  const boardsKey = useMemo(
+    () =>
+      boardsFromServer
+        .map((b) => `${b.id}:${b.position ?? 0}:${b.name}`)
+        .join("|"),
+    [boardsFromServer],
+  );
+
+  // Keep localBoards in sync with server boards (but not while dragging or renaming)
   useEffect(() => {
+    if (editingId) return;
+    if (isDragging) return;
     setLocalBoards(boardsFromServer);
-  }, [boardsFromServer]);
+  }, [boardsKey, editingId, isDragging, boardsFromServer]);
 
   // ----- EARLY RENDERING (after hooks are defined) -----
   if (!mounted) return <p className="p-6">Loading…</p>;
@@ -194,7 +193,7 @@ export default function BoardsListPage() {
         },
       });
 
-      await refetch();
+      // No refetch needed: subscription will push the new board automatically
     } finally {
       setBusy(false);
     }
@@ -209,6 +208,7 @@ export default function BoardsListPage() {
       await deleteBoard({ variables: { id } });
       // local update (snappier)
       setLocalBoards((prev) => prev.filter((b) => b.id !== id));
+      // subscription will also update
     } finally {
       setBusy(false);
     }
@@ -234,12 +234,15 @@ export default function BoardsListPage() {
         variables: { id, _set: { name: trimmed } },
       });
       cancelEdit();
+      // subscription will update other tabs too
     } finally {
       setBusy(false);
     }
   };
 
   const onDragEnd = async (result: DropResult) => {
+    setIsDragging(false);
+
     if (!result.destination) return;
 
     const from = result.source.index;
@@ -263,10 +266,9 @@ export default function BoardsListPage() {
     setBusy(true);
     try {
       await updateBoardPositions({ variables: { updates } });
-      await refetch();
+      // subscription will update other tabs
     } catch (e) {
-      // If something fails, fallback to server truth
-      await refetch();
+      // fallback to server truth (subscription data)
       setLocalBoards(boardsFromServer);
       throw e;
     } finally {
@@ -300,7 +302,10 @@ export default function BoardsListPage() {
       {localBoards.length === 0 ? (
         <p className="mt-6 text-white/70">No boards found.</p>
       ) : (
-        <DragDropContext onDragEnd={onDragEnd}>
+        <DragDropContext
+          onDragStart={() => setIsDragging(true)}
+          onDragEnd={onDragEnd}
+        >
           <Droppable droppableId="boards-list">
             {(dropProvided) => (
               <ul
@@ -327,7 +332,7 @@ export default function BoardsListPage() {
                             dragSnapshot.isDragging ? "bg-white/10" : "",
                           ].join(" ")}
                         >
-                          <div className="flex items-center gap-3 flex-1">
+                          <div className="flex flex-1 items-center gap-3">
                             {/* Drag handle */}
                             <div
                               {...dragProvided.dragHandleProps}
@@ -402,7 +407,7 @@ export default function BoardsListPage() {
                             <button
                               onClick={() => onDelete(b.id, b.name)}
                               disabled={busy}
-                              className="rounded-md p-1 text-white/50 hover:text-red-400 hover:bg-white/10 disabled:opacity-60"
+                              className="rounded-md p-1 text-white/50 hover:bg-white/10 hover:text-red-400 disabled:opacity-60"
                               title="Delete board"
                             >
                               <Trash2 size={18} />
